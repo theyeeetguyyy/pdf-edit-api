@@ -1,0 +1,15 @@
+# --- Python Packages ---
+# Install these using: pip install -r requirements.txt
+flask
+pypdf
+pdf2image
+pytesseract
+google-generativeai
+python-dotenv
+pypdf
+# --- System Dependencies ---
+# These must be installed separately on your system. They cannot be installed via pip.
+# See README.md for installation links and instructions.
+# - Tesseract-OCR
+# - Poppler for Windows
+# - LibreOffice 
