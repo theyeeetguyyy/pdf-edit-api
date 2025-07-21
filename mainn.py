@@ -9,20 +9,22 @@ import pytesseract
 from pdf2image import convert_from_path
 from pypdf import PdfReader, PdfWriter
 from pypdf.errors import PdfReadError
+import asyncio
+from playwright.async_api import async_playwright
+
 
 # Load environment variables from .env file
 load_dotenv()
 
 # --- CONFIGURATION ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-SOFFICE_PATH = os.getenv("SOFFICE_PATH")
 POPPLER_PATH = os.getenv("POPPLER_PATH")
 MODEL_NAME = 'gemini-1.5-flash-latest'
 PAGES_TO_PROCESS = 2
 
 # Validate that all required environment variables are set
-if not all([GEMINI_API_KEY, SOFFICE_PATH, POPPLER_PATH]):
-    raise RuntimeError("One or more required environment variables (GEMINI_API_KEY, SOFFICE_PATH, POPPLER_PATH) are not set. Please create a .env file and set them.")
+if not all([GEMINI_API_KEY, POPPLER_PATH]):
+    raise RuntimeError("One or more required environment variables (GEMINI_API_KEY, POPPLER_PATH) are not set. Please create a .env file and set them.")
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel(MODEL_NAME)
@@ -116,31 +118,43 @@ def rewrite_text_with_ai(text):
         print(f"AI Error: {e}")
         return None
 
-def convert_html_to_pdf(html_path):
-    """Uses LibreOffice to convert an HTML file to a PDF."""
-    if not os.path.exists(SOFFICE_PATH):
-        print(f"LibreOffice executable not found at '{SOFFICE_PATH}'. Check .env file.")
-        return None
+async def convert_html_to_pdf(html_path):
+    """Uses Playwright to convert an HTML file to a PDF."""
+    output_pdf_path = os.path.splitext(html_path)[0] + ".pdf"
+    
+    # Ensure the HTML file path is absolute for the file URI
+    absolute_html_path = os.path.abspath(html_path)
+    html_uri = f'file:///{absolute_html_path.replace("\\", "/")}'
+
     try:
-        command = f'"{os.path.normpath(SOFFICE_PATH)}" --headless --convert-to pdf --outdir "{os.path.dirname(html_path)}" "{html_path}"'
-        print(f"Running command: {command}")
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        print("LibreOffice STDOUT:", result.stdout)
-        print("LibreOffice STDERR:", result.stderr)
-        
-        expected_pdf = os.path.splitext(html_path)[0] + ".pdf"
-        if os.path.exists(expected_pdf):
-            return expected_pdf
-        print("Expected PDF not found after conversion:", expected_pdf)
-        return None
-    except subprocess.CalledProcessError as e:
-        print(f"LibreOffice conversion failed with return code {e.returncode}:")
-        print("STDOUT:", e.stdout)
-        print("STDERR:", e.stderr)
-        return None
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+            
+            # Navigate to the local HTML file
+            await page.goto(html_uri, wait_until='networkidle')
+            
+            # Generate the PDF
+            await page.pdf(
+                path=output_pdf_path,
+                format='A4',
+                print_background=True,
+                margin={'top': '20px', 'bottom': '20px', 'left': '20px', 'right': '20px'}
+            )
+            
+            await browser.close()
+
+        if os.path.exists(output_pdf_path):
+            print(f"Successfully converted HTML to PDF: {output_pdf_path}")
+            return output_pdf_path
+        else:
+            print("Error: PDF file was not created by Playwright.")
+            return None
+            
     except Exception as e:
-        print(f"An unexpected error occurred during HTML to PDF conversion: {e}")
+        print(f"An unexpected error occurred during HTML to PDF conversion with Playwright: {e}")
         return None
+
 
 def split_pdf(original_pdf_path, start_page, output_pdf_path):
     """Extracts pages from a PDF and saves them to a new file."""
@@ -212,7 +226,7 @@ def process_pdf(input_pdf_path, output_pdf_path):
 
         # 3. Convert the generated HTML to a PDF
         print("Step 3: Converting rewritten HTML to PDF...")
-        rewritten_pdf_path = convert_html_to_pdf(temp_html.name)
+        rewritten_pdf_path = asyncio.run(convert_html_to_pdf(temp_html.name))
         if not rewritten_pdf_path:
             return False
         temp_files.append(rewritten_pdf_path)

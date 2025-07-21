@@ -96,4 +96,4 @@ def process_endpoint():
 
 if __name__ == '__main__':
     # For development only. Use a production WSGI server like Gunicorn or Waitress for deployment.
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

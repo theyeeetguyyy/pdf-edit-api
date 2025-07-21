@@ -7,6 +7,7 @@ pytesseract
 google-generativeai
 python-dotenv
 pypdf
+playwright
 # --- System Dependencies ---
 # These must be installed separately on your system. They cannot be installed via pip.
 # See README.md for installation links and instructions.
